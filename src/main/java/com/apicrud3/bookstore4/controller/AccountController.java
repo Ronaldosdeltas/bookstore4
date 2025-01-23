@@ -1,6 +1,7 @@
 package com.apicrud3.bookstore4.controller;
 
 import com.apicrud3.bookstore4.model.AppUser;
+import com.apicrud3.bookstore4.model.LoginDto;
 import com.apicrud3.bookstore4.model.RegisterDto;
 import com.apicrud3.bookstore4.repository.AppRepository;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
@@ -8,6 +9,8 @@ import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -21,7 +24,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.swing.plaf.PanelUI;
 import java.time.Instant;
 import java.util.Date;
 import java.util.HashMap;
@@ -30,42 +32,105 @@ import java.util.HashMap;
 @RequestMapping("/account")
 public class AccountController {
 
-@Value("${spring.jwt.secret-key}")
-private String jwtSecretKey;
+    @Value("${security.jwt.secret-key}")
+    private String jwtSecretKey;
 
-@Value("${spring.jwt.issuer}")
-private String jwtIssuer;
+    @Value("${security.jwt.issuer}")
+    private String jwtIssuer;
 
-@Autowired
-private AppRepository appRepository;
-@PostMapping("/register")
-public ResponseEntity<Object> register(
-        @Valid @RequestBody RegisterDto registerDto,
-        BindingResult result) {
+    @Autowired
+    private AppRepository appRepository;
 
-    if (result.hasErrors()) {
-        var errorList = result.getAllErrors();
-        var errorsMap = new HashMap<String, String>();
+    @Autowired
+    private AuthenticationManager authenticationManager;
 
-        for (int i = 0; i < errorList.size(); i++) {
-            var error = (FieldError) errorList.get(i);
-            errorsMap.put(error.getField(), error.getDefaultMessage());
+    @PostMapping("/register")
+    public ResponseEntity<Object> register(
+            @Valid @RequestBody RegisterDto registerDto,
+            BindingResult result) {
+
+        if (result.hasErrors()) {
+            var errorList = result.getAllErrors();
+            var errorsMap = new HashMap<String, String>();
+
+            for (int i = 0; i < errorList.size(); i++) {
+                var error = (FieldError) errorList.get(i);
+                errorsMap.put(error.getField(), error.getDefaultMessage());
+            }
+            return ResponseEntity.badRequest().body(errorsMap);
         }
-        return ResponseEntity.badRequest().body(errorsMap);
+        var bCryptEncoder = new BCryptPasswordEncoder();
+        AppUser appUser = new AppUser();
+        appUser.setFirstName(registerDto.getFirstName());
+        appUser.setLastName(registerDto.getLastName());
+        appUser.setUsername(registerDto.getUsername());
+        appUser.setEmail(registerDto.getEmail());
+        appUser.setRole("USER");
+        appUser.setCreated_at(new Date());
+        appUser.setPassword(bCryptEncoder.encode(registerDto.getPassword()));
+
+        try {
+            //check if user already exists or not
+            var otherUser = appRepository.findByUsername(appUser.getUsername());
+            if (otherUser != null) {
+                return ResponseEntity.badRequest().body("User already exists");
+            }
+            otherUser = appRepository.findByEmail(appUser.getEmail());
+            if (otherUser != null) {
+                return ResponseEntity.badRequest().body("Email already exists");
+            }
+            appRepository.save(appUser);
+
+            String jwtToken = createJwtToken(appUser);
+            var response = new HashMap<String, Object>();
+            response.put("token", jwtToken);
+            response.put("user", appUser);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception ex) {
+            System.out.println("Theres is an Exception:");
+            ex.printStackTrace();
+        }
+        return ResponseEntity.badRequest().body("An error occurred");
     }
-    var bCryptEncoder = new BCryptPasswordEncoder();
-    AppUser appUser = new AppUser();
-    appUser.setFirstName(registerDto.getFirstName());
-    appUser.setLastName(registerDto.getLastName());
-    appUser.setUsername(registerDto.getUsername());
-    appUser.setEmail(registerDto.getEmail());
-    appUser.setRole("USER");
-    appUser.setCreated_at(new Date());
-    appUser.setPassword(bCryptEncoder.encode(registerDto.getPassword()));
 
+    @PostMapping("/login")
+    public ResponseEntity<Object> login(@Valid @RequestBody LoginDto loginDto, BindingResult result) {
+        if (result.hasErrors()) {
+            var errorList = result.getAllErrors();
+            var errorsMap = new HashMap<String, String>();
 
-}
+            for (int i = 0; i < errorList.size(); i++) {
+                var error = (FieldError) errorList.get(i);
+                errorsMap.put(error.getField(), error.getDefaultMessage());
+            }
+            return ResponseEntity.badRequest().body(errorsMap);
+        }
+        var appUser = appRepository.findByUsername(loginDto.getUsername());
+        if (appUser == null) {
+            return ResponseEntity.badRequest().body("Invalid username or password");
+        }
 
+        try {
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken
+                            (loginDto.getUsername(),
+                                    loginDto.getPassword()));
+
+        AppUser appUser1 = appRepository.findByUsername(loginDto.getUsername());
+        String jwtToken = createJwtToken(appUser);
+        var response = new HashMap<String, Object>();
+        response.put("token", jwtToken);
+        response.put("user", appUser);
+        return ResponseEntity.ok(response);
+        }
+        catch (Exception ex) {
+            System.out.println("There is an Exception:");
+            ex.printStackTrace();
+
+        }
+        return ResponseEntity.badRequest().body("Invalid username or password");
+    }
 
 private String createJwtToken(AppUser appUser) {
     Instant now = Instant.now();

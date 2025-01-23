@@ -1,6 +1,7 @@
 package com.apicrud3.bookstore4.config;
 
 import com.apicrud3.bookstore4.service.AppUserService;
+import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,8 +23,9 @@ import javax.crypto.spec.SecretKeySpec;
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
-    @Value("${ spring.jwt.secret-key}")
+    @Value("${security.jwt.secret-key}")
     private String JwtSecretKey;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception{
         return http
@@ -42,7 +44,7 @@ public class SecurityConfig {
     }
     @Bean
     public JwtDecoder jwtDecoder(){
-        var secretKey = new SecretKeySpec(JwtSecretKey.getBytes(),"");
+        var secretKey = new SecretKeySpec(JwtSecretKey.getBytes(),"HmacSHA256");
         return NimbusJwtDecoder.withSecretKey(secretKey)
                 .macAlgorithm(MacAlgorithm.HS256).build();
     }
