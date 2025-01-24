@@ -19,10 +19,8 @@ import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
 import java.util.Date;
@@ -43,6 +41,18 @@ public class AccountController {
 
     @Autowired
     private AuthenticationManager authenticationManager;
+
+    @GetMapping("/profile")
+    public ResponseEntity<Object> profile(Authentication auth) {
+        var response = new HashMap<String, Object>();
+        response.put("UserName", auth.getName());
+        response.put("authorities", auth.getAuthorities());
+
+        var appUser = appRepository.findByUsername(auth.getName());
+        response.put("user", appUser);
+
+        return ResponseEntity.ok(response);
+    }
 
     @PostMapping("/register")
     public ResponseEntity<Object> register(
@@ -150,6 +160,6 @@ private String createJwtToken(AppUser appUser) {
     );
     return encoder.encode(params) .getTokenValue();
 
-}
+   }
 
 }
